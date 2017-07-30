@@ -12,11 +12,10 @@
 #include <Bounce.h>
 
 //Bounce button0 = Bounce(0, 15);
-Bounce button1 = Bounce(1, 15);  // 15 = 15 ms debounce time
+//Bounce button1 = Bounce(1, 15);  // 15 = 15 ms debounce time
 Bounce button2 = Bounce(2, 15);
-
 double touch0 = 0;
-//int touch1 = A5;
+double touch1 = 1;
 
 #include <Audio.h>
 #include <Wire.h>
@@ -26,14 +25,10 @@ double touch0 = 0;
 #include <RollingAverage.h>
 #include <CapacitiveSensor.h>
 
-#define NUM_SAMPLES 3 //
-int CURRENT;
-int NSCAN;
-int PRESCALE;
-
-int minSense = 5000;
-int maxSense = 10000;
-
+int minSense0 = 5000;
+int maxSense0 = 12000;
+int minSense1 = 17000;
+int maxSense1 = 21000;
 
 // GUItool: begin automatically generated code
 AudioSynthWaveform       waveform1;      //xy=120,177
@@ -55,25 +50,20 @@ AudioConnection          patchCord8(envelope1, 0, mixer2, 1);
 AudioConnection          patchCord9(mixer2, 0, i2s1, 0);
 AudioConnection          patchCord10(mixer2, 0, i2s1, 1);
 AudioControlSGTL5000     sgtl5000_1;     //xy=412,39
-// GUItool: end automatically generated code
 
-CapacitiveSensor   cs_3_4 = CapacitiveSensor(3,4); 
-RollingAverage <int, 32> Cap1Average; // power of 2
-RollingAverage <int, 64> Cap2Average; 
-
+RollingAverage <int, 32> Cap0Average; // power of 2
+RollingAverage <int, 32> Cap1Average; 
 
 
 void setup() {
-  cs_3_4.set_CS_AutocaL_Millis(0xFFFFFFFF);
   
   Serial.begin(9600);
   AudioMemory(20);
   sgtl5000_1.enable();
-  sgtl5000_1.volume(0.32);
-  
+  sgtl5000_1.volume(0.32);  
   
   //pinMode(0, INPUT_PULLUP);
-  pinMode(1, INPUT_PULLUP);
+  //pinMode(1, INPUT_PULLUP);
   pinMode(2, INPUT_PULLUP);
   mixer1.gain(0, 0.75);
   mixer1.gain(1, 0.0);
@@ -96,9 +86,7 @@ void setup() {
   envelope1.hold(10);
   envelope1.decay(25);
   envelope1.sustain(0.4);
-  envelope1.release(70);
-
-  //setTouchReadSensitivity(5, 5, 5);
+  envelope1.release(70); 
 }
 
 int waveform_type = WAVEFORM_SAWTOOTH;
@@ -109,8 +97,31 @@ bool mixer2_envelope = false;
 
 void loop() {
   //button0.update();
-  button1.update();
+  //button1.update();
+
+  // SWITCH THE SOUND ON  
+  
   button2.update();
+  
+  if (button2.fallingEdge()) {
+    mixer2.gain(0, 0.0);
+    mixer2.gain(1, 1.0);
+    mixer2_envelope = true;
+    timeout = 0;
+    envelope1.noteOn();
+  }
+  if (button2.risingEdge()) {
+    envelope1.noteOff();
+    timeout = 0;
+  }
+
+  // after 4 seconds of inactivity, go back to
+  // steady listening intead of the envelope
+  if (mixer2_envelope == true && timeout > 4000) {
+    mixer2.gain(0, 0.15);
+    mixer2.gain(1, 0.0);
+    mixer2_envelope = false;
+  }
 
   // Left changes the type of control waveform
 //  if (button0.fallingEdge()) {
@@ -134,82 +145,124 @@ void loop() {
 //    waveform1.begin(waveform_type);
 //  }
 
+
+  // SET THE FREQUENCY
+
+  int t = touchRead(touch0);
+  int capsense0 = Cap0Average.next(t);  
+//  Serial.print(t);
+//  Serial.print("\t");
+  Serial.print(capsense0);
+  Serial.print("\t");
+  capsense0 = map(capsense0, minSense0, maxSense0, 0, 1023);
+  capsense0 = constrain(capsense0, 0 , 1023);
+//  Serial.print(capsense0);
+//  Serial.print("\t");
+  float knob2 = (float)capsense0 / 1023.0;
+
+
+  // SET THE FREQUENCY MODULATION
+
+  float knob3 = (float)analogRead(A3) / 1023.0;
+
+//  Serial.print("\t");  
+//  Serial.print("wave");
+//  Serial.print("\t");
+//  Serial.print(knob2);
+//  Serial.print("\t");
+//  Serial.print("fm");
+//  Serial.print("\t");
+//  Serial.print(knob3);
+
+  waveform1.frequency(360 * knob2 + 0.25);
+  sine_fm1.frequency(knob3 * 1500 + 50);
+  sine1.frequency(knob3 * 1500 + 50);
+
+  // SET THE MIXER
+  int mix = touchRead(touch1);
+  int capsense1 = Cap1Average.next(mix);
+//  Serial.print(mix);
+//  Serial.print("\t");
+  Serial.print(capsense1);
+  Serial.print("\t");
+  capsense1 = map(capsense1, minSense1, maxSense1, 0, 1023);
+  capsense1 = constrain(capsense1, 0 , 1023);
+//  Serial.print(capsense1);
+//  Serial.print("\t");
+
   // middle button switch which source we hear from mixer1
-  if (button1.fallingEdge()) {
-    if (mixer1_setting == 0) {
+//  if (button1.fallingEdge()) {
+    if((capsense1 >= 0)&&(capsense1 <= 250)){
       mixer1.gain(0, 0.75);
       mixer1.gain(1, 0.0);
       mixer1.gain(2, 0.0);
       mixer1.gain(3, 0.0);
       Serial.println("Mixer1: Control oscillator");
       mixer1_setting = 1;
-    } else if (mixer1_setting == 1) {
+    } else if ((capsense1 >= 255)&&(capsense1 <= 750)) {
       mixer1.gain(0, 0.0);
       mixer1.gain(1, 0.75);
       mixer1.gain(2, 0.0);
       mixer1.gain(3, 0.0);
       Serial.println("Mixer1: Frequency Modulated Oscillator");
       mixer1_setting = 2;
-    } else if (mixer1_setting == 2) {
+    } else if (capsense1 > 750) {
       mixer1.gain(0, 0.0);
       mixer1.gain(1, 0.0);
       mixer1.gain(2, 0.75);
       mixer1.gain(3, 0.0);
       Serial.println("Mixer1: Regular Sine Wave Oscillator");
       mixer1_setting = 3;
-    } else if (mixer1_setting == 3) {
-      mixer1.gain(0, 0.0);
-      mixer1.gain(1, 0.0);
-      mixer1.gain(2, 0.0);
-      mixer1.gain(3, 0.75);
-      Serial.println("Mixer1: Pink Noise");
-      mixer1_setting = 0;
-    }
-  }
+    } 
+//    else if ((751 >= 0)&&(capsense1 <= 1023)) {
+//      mixer1.gain(0, 0.0);
+//      mixer1.gain(1, 0.0);
+//      mixer1.gain(2, 0.0);
+//      mixer1.gain(3, 0.75);
+//      Serial.println("Mixer1: Pink Noise");
+//      mixer1_setting = 0;
+//    }
+  //}
 
-  // Right button activates the envelope
-  if (button2.fallingEdge()) {
-    mixer2.gain(0, 0.0);
-    mixer2.gain(1, 1.0);
-    mixer2_envelope = true;
-    timeout = 0;
-    envelope1.noteOn();
-  }
-  if (button2.risingEdge()) {
-    envelope1.noteOff();
-    timeout = 0;
-  }
+//  // middle button switch which source we hear from mixer1
+//  if (button1.fallingEdge()) {
+//    if (mixer1_setting == 0) {
+//      mixer1.gain(0, 0.75);
+//      mixer1.gain(1, 0.0);
+//      mixer1.gain(2, 0.0);
+//      mixer1.gain(3, 0.0);
+//      Serial.println("Mixer1: Control oscillator");
+//      mixer1_setting = 1;
+//    } else if (mixer1_setting == 1) {
+//      mixer1.gain(0, 0.0);
+//      mixer1.gain(1, 0.75);
+//      mixer1.gain(2, 0.0);
+//      mixer1.gain(3, 0.0);
+//      Serial.println("Mixer1: Frequency Modulated Oscillator");
+//      mixer1_setting = 2;
+//    } else if (mixer1_setting == 2) {
+//      mixer1.gain(0, 0.0);
+//      mixer1.gain(1, 0.0);
+//      mixer1.gain(2, 0.75);
+//      mixer1.gain(3, 0.0);
+//      Serial.println("Mixer1: Regular Sine Wave Oscillator");
+//      mixer1_setting = 3;
+//    } else if (mixer1_setting == 3) {
+//      mixer1.gain(0, 0.0);
+//      mixer1.gain(1, 0.0);
+//      mixer1.gain(2, 0.0);
+//      mixer1.gain(3, 0.75);
+//      Serial.println("Mixer1: Pink Noise");
+//      mixer1_setting = 0;
+//    }
+//  }
 
-  // after 4 seconds of inactivity, go back to
-  // steady listening intead of the envelope
-  if (mixer2_envelope == true && timeout > 4000) {
-    mixer2.gain(0, 0.15);
-    mixer2.gain(1, 0.0);
-    mixer2_envelope = false;
-  }
 
-  // use the knobs to adjust parameters
-  //float knob1 = (float)analogRead(A1) / 1023.0;
-  //float knob2 = (float)analogRead(A2) / 1023.0;
-  float knob3 = (float)analogRead(A3) / 1023.0;
+
+  
 
  
- int t = touchRead(touch0);
- int capsense1 = Cap1Average.next(t);
- //int capsense2 = Cap2Average.next((int) ((long) cs_3_4.capacitiveSensor(NUM_SAMPLES)));
-
- //Serial.print(touchRead(touch0));
- //Serial.print("\t"); 
- Serial.print(t);
- Serial.print("\t");
- Serial.print(capsense1);
- Serial.print("\t");
-// Serial.print(capsense2);
-// Serial.print("\t");
-
-  capsense1 = map(capsense1, minSense, maxSense, 0, 1023);
-  capsense1 = constrain(capsense1, 0 , 1023);
-  float knob2 = (float)capsense1 / 1023.0;
+ 
 
  
 // Serial.print(cs_3_4.capacitiveSensor(NUM_SAMPLES));
@@ -219,66 +272,50 @@ void loop() {
 
 
  
-  if (mixer1_setting == 1) 
-  {
-    Serial.print("Mixer1: Control oscillator");
-  } 
-  else if (mixer1_setting == 2) 
-  {
-    Serial.print("Mixer1: Frequency Modulated Oscillator");
-  } 
-  else if (mixer1_setting == 3) 
-  {
-    Serial.print("Mixer1: Regular Sine Wave Oscillator");
-  } 
-  else if (mixer1_setting == 0) 
-  {
-    Serial.print("Mixer1: Pink Noise");
-  }
+//  if (mixer1_setting == 1) 
+//  {
+//    Serial.print("Mixer1: Control oscillator");
+//  } 
+//  else if (mixer1_setting == 2) 
+//  {
+//    Serial.print("Mixer1: Frequency Modulated Oscillator");
+//  } 
+//  else if (mixer1_setting == 3) 
+//  {
+//    Serial.print("Mixer1: Regular Sine Wave Oscillator");
+//  } 
+//  else if (mixer1_setting == 0) 
+//  {
+//    Serial.print("Mixer1: Pink Noise");
+//  }
+//
+//  Serial.print("\t");
+//
+//  if (waveform_type == WAVEFORM_SINE) 
+//  {
+//    Serial.print("Sine");
+//  } 
+//  else if (waveform_type == WAVEFORM_SQUARE) 
+//  {
+//    Serial.print("Square");
+//  } 
+//  else if (waveform_type == WAVEFORM_TRIANGLE) 
+//  {
+//    Serial.print("Triangle");
+//  } 
+//  else if (waveform_type == WAVEFORM_PULSE) 
+//  {
+//    Serial.print("Pulse");
+//  } 
+//  else if (waveform_type == WAVEFORM_SAWTOOTH) 
+//  {
+//    Serial.print("Sawtooth");
+//  }
 
-  Serial.print("\t");
-
-  if (waveform_type == WAVEFORM_SINE) 
-  {
-    Serial.print("Sine");
-  } 
-  else if (waveform_type == WAVEFORM_SQUARE) 
-  {
-    Serial.print("Square");
-  } 
-  else if (waveform_type == WAVEFORM_TRIANGLE) 
-  {
-    Serial.print("Triangle");
-  } 
-  else if (waveform_type == WAVEFORM_PULSE) 
-  {
-    Serial.print("Pulse");
-  } 
-  else if (waveform_type == WAVEFORM_SAWTOOTH) 
-  {
-    Serial.print("Sawtooth");
-  }
-
+//  // Right button activates the envelope
+  
  
-  Serial.print("\t");
-  
-  
-  Serial.print("wave");
-  Serial.print("\t");
-  Serial.print(knob2);
-  Serial.print("\t");
-  Serial.print("fm");
-  Serial.print("\t");
-  Serial.print(knob3);
-  
-  
-//  waveform1.frequency(360 * knob2 + 0.25);
-//  sine_fm1.frequency(knob3 * 1500 + 50);
-//  sine1.frequency(knob3 * 1500 + 50);
 
-  waveform1.frequency(360 * knob2 + 0.25);
-  sine_fm1.frequency(knob3 * 1500 + 50);
-  sine1.frequency(knob3 * 1500 + 50);
 
 
   Serial.println("");
