@@ -31,6 +31,9 @@ int CURRENT;
 int NSCAN;
 int PRESCALE;
 
+int minSense = 5000;
+int maxSense = 10000;
+
 
 // GUItool: begin automatically generated code
 AudioSynthWaveform       waveform1;      //xy=120,177
@@ -187,7 +190,7 @@ void loop() {
 
   // use the knobs to adjust parameters
   //float knob1 = (float)analogRead(A1) / 1023.0;
-  float knob2 = (float)analogRead(A2) / 1023.0;
+  //float knob2 = (float)analogRead(A2) / 1023.0;
   float knob3 = (float)analogRead(A3) / 1023.0;
 
  
@@ -197,13 +200,18 @@ void loop() {
 
  //Serial.print(touchRead(touch0));
  //Serial.print("\t"); 
+ Serial.print(t);
+ Serial.print("\t");
  Serial.print(capsense1);
  Serial.print("\t");
 // Serial.print(capsense2);
 // Serial.print("\t");
 
- Serial.print(t);
- Serial.print("\t");
+  capsense1 = map(capsense1, minSense, maxSense, 0, 1023);
+  capsense1 = constrain(capsense1, 0 , 1023);
+  float knob2 = (float)capsense1 / 1023.0;
+
+ 
 // Serial.print(cs_3_4.capacitiveSensor(NUM_SAMPLES));
 // Serial.print("\t");
 
@@ -264,6 +272,10 @@ void loop() {
   Serial.print(knob3);
   
   
+//  waveform1.frequency(360 * knob2 + 0.25);
+//  sine_fm1.frequency(knob3 * 1500 + 50);
+//  sine1.frequency(knob3 * 1500 + 50);
+
   waveform1.frequency(360 * knob2 + 0.25);
   sine_fm1.frequency(knob3 * 1500 + 50);
   sine1.frequency(knob3 * 1500 + 50);
