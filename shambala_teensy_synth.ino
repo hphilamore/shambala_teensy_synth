@@ -4,14 +4,18 @@
 // https://hackaday.io/project/8292-microcontroller-audio-workshop-had-supercon-2015
 // 
 // Part 2-8: Oscillators
+// good sensitivity parameters to use in in touch.c 
+//#define current_set 10 //2   // 0 to 15 - current to use, value is 2*(current+1)
+//#define nscan_set 31 //9     // number of times to scan, 0 to 31, value is nscan+1
+//#define prescale_set 3 //2  // prescaler, 0 to 7 - value is 2^(prescaler+1)
 
 #include <Bounce.h>
 
-Bounce button0 = Bounce(0, 15);
+//Bounce button0 = Bounce(0, 15);
 Bounce button1 = Bounce(1, 15);  // 15 = 15 ms debounce time
 Bounce button2 = Bounce(2, 15);
 
-//double touch0 = 0;
+double touch0 = 0;
 //int touch1 = A5;
 
 #include <Audio.h>
@@ -19,6 +23,14 @@ Bounce button2 = Bounce(2, 15);
 #include <SPI.h>
 #include <SD.h>
 #include <SerialFlash.h>
+#include <RollingAverage.h>
+#include <CapacitiveSensor.h>
+
+#define NUM_SAMPLES 3 //
+int CURRENT;
+int NSCAN;
+int PRESCALE;
+
 
 // GUItool: begin automatically generated code
 AudioSynthWaveform       waveform1;      //xy=120,177
@@ -42,17 +54,22 @@ AudioConnection          patchCord10(mixer2, 0, i2s1, 1);
 AudioControlSGTL5000     sgtl5000_1;     //xy=412,39
 // GUItool: end automatically generated code
 
-
+CapacitiveSensor   cs_3_4 = CapacitiveSensor(3,4); 
+RollingAverage <int, 32> Cap1Average; // power of 2
+RollingAverage <int, 64> Cap2Average; 
 
 
 
 void setup() {
+  cs_3_4.set_CS_AutocaL_Millis(0xFFFFFFFF);
+  
   Serial.begin(9600);
   AudioMemory(20);
   sgtl5000_1.enable();
   sgtl5000_1.volume(0.32);
   
-  pinMode(0, INPUT_PULLUP);
+  
+  //pinMode(0, INPUT_PULLUP);
   pinMode(1, INPUT_PULLUP);
   pinMode(2, INPUT_PULLUP);
   mixer1.gain(0, 0.75);
@@ -77,6 +94,8 @@ void setup() {
   envelope1.decay(25);
   envelope1.sustain(0.4);
   envelope1.release(70);
+
+  //setTouchReadSensitivity(5, 5, 5);
 }
 
 int waveform_type = WAVEFORM_SAWTOOTH;
@@ -86,31 +105,31 @@ elapsedMillis timeout = 0;
 bool mixer2_envelope = false;
 
 void loop() {
-  button0.update();
+  //button0.update();
   button1.update();
   button2.update();
 
   // Left changes the type of control waveform
-  if (button0.fallingEdge()) {
-    Serial.print("Control waveform: ");
-    if (waveform_type == WAVEFORM_SAWTOOTH) {
-      waveform_type = WAVEFORM_SINE;
-      Serial.println("Sine");
-    } else if (waveform_type == WAVEFORM_SINE) {
-      waveform_type = WAVEFORM_SQUARE;
-      Serial.println("Square");
-    } else if (waveform_type == WAVEFORM_SQUARE) {
-      waveform_type = WAVEFORM_TRIANGLE;
-      Serial.println("Triangle");
-    } else if (waveform_type == WAVEFORM_TRIANGLE) {
-      waveform_type = WAVEFORM_PULSE;
-      Serial.println("Pulse");
-    } else if (waveform_type == WAVEFORM_PULSE) {
-      waveform_type = WAVEFORM_SAWTOOTH;
-      Serial.println("Sawtooth");
-    }
-    waveform1.begin(waveform_type);
-  }
+//  if (button0.fallingEdge()) {
+//    Serial.print("Control waveform: ");
+//    if (waveform_type == WAVEFORM_SAWTOOTH) {
+//      waveform_type = WAVEFORM_SINE;
+//      Serial.println("Sine");
+//    } else if (waveform_type == WAVEFORM_SINE) {
+//      waveform_type = WAVEFORM_SQUARE;
+//      Serial.println("Square");
+//    } else if (waveform_type == WAVEFORM_SQUARE) {
+//      waveform_type = WAVEFORM_TRIANGLE;
+//      Serial.println("Triangle");
+//    } else if (waveform_type == WAVEFORM_TRIANGLE) {
+//      waveform_type = WAVEFORM_PULSE;
+//      Serial.println("Pulse");
+//    } else if (waveform_type == WAVEFORM_PULSE) {
+//      waveform_type = WAVEFORM_SAWTOOTH;
+//      Serial.println("Sawtooth");
+//    }
+//    waveform1.begin(waveform_type);
+//  }
 
   // middle button switch which source we hear from mixer1
   if (button1.fallingEdge()) {
@@ -171,10 +190,25 @@ void loop() {
   float knob2 = (float)analogRead(A2) / 1023.0;
   float knob3 = (float)analogRead(A3) / 1023.0;
 
-// Serial.print(touchRead(touch0));
-// int t = touchRead(touch0);
  
+ int t = touchRead(touch0);
+ int capsense1 = Cap1Average.next(t);
+ //int capsense2 = Cap2Average.next((int) ((long) cs_3_4.capacitiveSensor(NUM_SAMPLES)));
+
+ //Serial.print(touchRead(touch0));
+ //Serial.print("\t"); 
+ Serial.print(capsense1);
  Serial.print("\t");
+// Serial.print(capsense2);
+// Serial.print("\t");
+
+ Serial.print(t);
+ Serial.print("\t");
+// Serial.print(cs_3_4.capacitiveSensor(NUM_SAMPLES));
+// Serial.print("\t");
+
+ 
+
 
  
   if (mixer1_setting == 1) 
@@ -239,5 +273,17 @@ void loop() {
 
   delay(100);
 }
+
+//void setTouchReadSensitivity(uint8_t t_current, uint8_t num_scans, uint8_t t_prescale){
+//  //check the new values are in range
+//        if(t_current>15) t_current=15; 
+//  if(num_scans>31) num_scans=31;
+//  if(t_prescale>7) t_prescale=7;
+//
+//        //update the variables
+//  CURRENT=t_current; //0 to 15 - current to use, value is 2*(current+1), default 2
+//  NSCAN=num_scans; //number of times to scan, 0 to 31, value is nscan+1, default 9
+//  PRESCALE=t_prescale; //prescaler, 0 to 7 - value is 2^(prescaler+1), default 2
+//}
 
 
